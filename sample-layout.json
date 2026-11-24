@@ -1,0 +1,38 @@
+{
+  "room": { "width": 4, "depth": 5 },
+  "corridors": [
+    { "id": "entrance", "x": 0, "z": -2, "width": 0.9, "depth": 1 }
+  ],
+  "furniture": [
+    {
+      "id": "bed1",
+      "type": "bed",
+      "x": -1,
+      "z": 1,
+      "width": 1,
+      "depth": 2,
+      "height": 0.5,
+      "rotation": 0
+    },
+    {
+      "id": "desk1",
+      "type": "desk",
+      "x": 1,
+      "z": 1,
+      "width": 1.2,
+      "depth": 0.6,
+      "height": 0.75,
+      "rotation": 90
+    },
+    {
+      "id": "cabinet1",
+      "type": "cabinet",
+      "x": 1.4,
+      "z": -1.5,
+      "width": 0.8,
+      "depth": 0.5,
+      "height": 1.6,
+      "rotation": 0
+    }
+  ]
+}
