@@ -13,20 +13,85 @@ const furniturePresets = {
   cabinet: { label: 'Cabinet', width: 0.8, depth: 0.5, height: 1.6 },
 };
 
+const styles = document.createElement('style');
+styles.textContent = `
+  .layout-editor {
+    display: grid;
+    grid-template-columns: 290px minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    height: 100dvh;
+  }
+
+  .furniture-panel {
+    box-sizing: border-box;
+    min-width: 0;
+    overflow: auto;
+    padding: 16px;
+    background: white;
+  }
+
+  .furniture-panel ul {
+    padding-left: 22px;
+    overflow-wrap: anywhere;
+  }
+
+  .furniture-panel li + li {
+    margin-top: 8px;
+  }
+
+  .furniture-panel form {
+    display: grid;
+    gap: 8px;
+  }
+
+  .furniture-panel input {
+    width: 80px;
+  }
+
+  .scene-viewport {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .scene-viewport canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  @media (max-width: 700px) {
+    .layout-editor {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-rows: auto 60dvh;
+      height: auto;
+    }
+
+    .furniture-panel {
+      max-height: 40dvh;
+    }
+  }
+`;
+document.head.append(styles);
+document.body.style.margin = '0';
+document.body.style.overflow = 'auto';
+
+const app = document.querySelector('#app');
+app.classList.add('layout-editor');
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0xf0f0f0);
 
-const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000,
-);
+const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
 camera.position.set(4, 4, 6);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
-document.body.appendChild(renderer.domElement);
+const viewport = document.createElement('div');
+viewport.className = 'scene-viewport';
+viewport.append(renderer.domElement);
 
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -39,19 +104,49 @@ scene.add(dirLight);
 
 createRoom(scene, layout.room);
 
-const furnitureList = document.createElement('aside');
-furnitureList.style.cssText =
-  'position: fixed; top: 16px; left: 16px; padding: 12px; background: white;';
+const furniturePanel = document.createElement('aside');
+furniturePanel.className = 'furniture-panel';
+furniturePanel.innerHTML = `
+  <strong>Furniture List</strong>
+  <ul></ul>
 
-const title = document.createElement('strong');
-title.textContent = 'Furniture List';
+  <form>
+    <label>
+      Furniture type
+      <select name="furnitureType"></select>
+    </label>
 
-const list = document.createElement('ul');
+    <label>
+      Width (m)
+      <input name="width" type="number" min="0" step="any" required>
+    </label>
 
-const typeLabel = document.createElement('label');
-typeLabel.textContent = 'Furniture type ';
+    <label>
+      Depth (m)
+      <input name="depth" type="number" min="0" step="any" required>
+    </label>
 
-const typeSelect = document.createElement('select');
+    <label>
+      Height (m)
+      <input name="height" type="number" min="0" step="any" required>
+    </label>
+
+    <button type="submit">Add furniture</button>
+    <button type="button" hidden>Cancel edit</button>
+  </form>
+`;
+
+const list = furniturePanel.querySelector('ul');
+const form = furniturePanel.querySelector('form');
+const typeSelect = form.elements.namedItem('furnitureType');
+const submitButton = form.querySelector('button[type="submit"]');
+const cancelButton = form.querySelector('button[type="button"]');
+const dimensionInputs = ['width', 'depth', 'height'].map(
+  (name) => form.elements.namedItem(name),
+);
+
+let editingId = null;
+
 for (const [type, preset] of Object.entries(furniturePresets)) {
   const option = document.createElement('option');
   option.value = type;
@@ -60,15 +155,33 @@ for (const [type, preset] of Object.entries(furniturePresets)) {
 }
 
 typeSelect.value = 'desk';
-typeLabel.append(typeSelect);
+app.append(furniturePanel, viewport);
 
-const addButton = document.createElement('button');
-addButton.type = 'button';
-addButton.textContent = 'Add furniture';
-addButton.style.marginLeft = '8px';
+const viewportObserver = new ResizeObserver(([entry]) => {
+  const { width, height } = entry.contentRect;
+  if (width < 1 || height < 1) return;
 
-furnitureList.append(title, list, typeLabel, addButton);
-document.body.append(furnitureList);
+  renderer.setSize(width, height, false);
+  camera.aspect = width / height;
+  camera.updateProjectionMatrix();
+});
+
+viewportObserver.observe(viewport);
+
+function fillDimensions(values) {
+  for (const input of dimensionInputs) {
+    input.setCustomValidity('');
+    input.value = values[input.name];
+  }
+}
+
+function finishEditing() {
+  editingId = null;
+  typeSelect.disabled = false;
+  submitButton.textContent = 'Add furniture';
+  cancelButton.hidden = true;
+  fillDimensions(furniturePresets[typeSelect.value]);
+}
 
 function refreshFurniture() {
   renderFurniture(scene, layout.furniture, conflictIds);
@@ -76,35 +189,108 @@ function refreshFurniture() {
 
   for (const item of layout.furniture) {
     const row = document.createElement('li');
-    row.textContent =
+
+    const label = document.createElement('span');
+    label.textContent =
       `${item.id} · ${item.width} × ${item.depth} × ${item.height} m`;
+
+    const editButton = document.createElement('button');
+    editButton.type = 'button';
+    editButton.textContent = 'Edit';
+    editButton.setAttribute('aria-label', `Edit ${item.id}`);
+    editButton.addEventListener('click', () => {
+      editingId = item.id;
+      typeSelect.value = item.type;
+      typeSelect.disabled = true;
+      submitButton.textContent = `Save ${item.id}`;
+      cancelButton.hidden = false;
+      fillDimensions(item);
+      dimensionInputs[0].focus();
+    });
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.textContent = 'Remove';
+    removeButton.setAttribute('aria-label', `Remove ${item.id}`);
+    removeButton.addEventListener('click', () => {
+      layout.furniture = layout.furniture.filter(
+        (furniture) => furniture.id !== item.id,
+      );
+
+      if (editingId === item.id) {
+        finishEditing();
+      }
+
+      refreshFurniture();
+    });
+
+    const actions = document.createElement('div');
+    actions.append(editButton, ' ', removeButton);
+
+    row.append(label, actions);
     list.append(row);
   }
 }
 
-addButton.addEventListener('click', () => {
-  const type = typeSelect.value;
-  const { width, depth, height } = furniturePresets[type];
+typeSelect.addEventListener('change', () => {
+  fillDimensions(furniturePresets[typeSelect.value]);
+});
 
-  let number = 1;
-  while (layout.furniture.some((item) => item.id === `${type}${number}`)) {
-    number += 1;
+cancelButton.addEventListener('click', finishEditing);
+
+for (const input of dimensionInputs) {
+  input.addEventListener('input', () => {
+    input.setCustomValidity('');
+  });
+}
+
+form.addEventListener('submit', (event) => {
+  event.preventDefault();
+
+  const values = {};
+
+  for (const input of dimensionInputs) {
+    const value = input.valueAsNumber;
+
+    if (!Number.isFinite(value) || value <= 0) {
+      input.setCustomValidity('Enter a dimension greater than zero.');
+      input.reportValidity();
+      return;
+    }
+
+    values[input.name] = value;
   }
 
-  layout.furniture.push({
-    id: `${type}${number}`,
-    type,
-    x: 0,
-    z: 0,
-    width,
-    depth,
-    height,
-    rotation: 0,
-  });
+  if (editingId !== null) {
+    const item = layout.furniture.find((furniture) => furniture.id === editingId);
+
+    if (item) {
+      Object.assign(item, values);
+    }
+
+    finishEditing();
+  } else {
+    const type = typeSelect.value;
+    let number = 1;
+
+    while (layout.furniture.some((item) => item.id === `${type}${number}`)) {
+      number += 1;
+    }
+
+    layout.furniture.push({
+      id: `${type}${number}`,
+      type,
+      x: 0,
+      z: 0,
+      rotation: 0,
+      ...values,
+    });
+  }
 
   refreshFurniture();
 });
 
+finishEditing();
 refreshFurniture();
 
 function animate() {
