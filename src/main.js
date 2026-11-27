@@ -21,17 +21,28 @@ const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(10, 20, 10);
 scene.add(dirLight);
 
-const layout = {
-  room: { width: 4, depth: 5 },
-  furniture: [
-    { id: "bed1", type: "bed", x: -1, z: 1, width: 1, depth: 2, height: 0.5, rotation: 0 },
-    { id: "desk1", type: "desk", x: 1, z: 1, width: 1.2, depth: 0.6, height: 0.75, rotation: 90 }
-  ]
-};
+import layout from '../sample-layout.json';
 
 const conflictIds = []; 
 createRoom(scene, layout.room);
 renderFurniture(scene, layout.furniture, conflictIds);
+
+const furnitureList = document.createElement('aside');
+furnitureList.style.cssText =
+  'position: fixed; top: 16px; left: 16px; padding: 12px; background: white;';
+
+const title = document.createElement('strong');
+title.textContent = 'Furniture List';
+
+const list = document.createElement('ul');
+for (const item of layout.furniture) {
+  const row = document.createElement('li');
+  row.textContent = `${item.id} · ${item.width} × ${item.depth} × ${item.height} m`;
+  list.append(row);
+}
+
+furnitureList.append(title, list);
+document.body.append(furnitureList);
 
 function animate() {
   requestAnimationFrame(animate);
